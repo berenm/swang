@@ -163,7 +163,7 @@ namespace {
       if ((s.language == language) || (s.language == swang::language_type::none)) {
         *style          = s;
         style->language = language;
-        return llvm::error_code::success();
+        return llvm::error_code();
       }
     }
 
