@@ -11,6 +11,7 @@ endif()
 add_subdirectory(clang-query)
 add_subdirectory(pp-trace)
 add_subdirectory(tool-template)
+add_subdirectory(swang)
 
 # Add the common testsuite after all the tools.
 # TODO: Support tests with more granularity when features are off?
