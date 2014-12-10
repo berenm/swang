@@ -29,13 +29,22 @@ namespace swang {
   };
 
   struct config {
-    language_type language = language_type::none;
+    config() :
+      language(language_type::none) {}
+
+    language_type language;
 
     struct style {
-      bool        is_set = false;
-      casing_type casing = casing_type::any_case;
-      std::string prefix = "";
-      std::string suffix = "";
+      style() :
+        is_set(false),
+        casing(casing_type::any_case),
+        prefix(""),
+        suffix("") {}
+
+      bool        is_set;
+      casing_type casing;
+      std::string prefix;
+      std::string suffix;
     };
 
     style namespace_style;

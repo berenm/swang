@@ -7,7 +7,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/YAMLTraits.h"
 
-static constexpr char const DEBUG_TYPE[] = "swang";
+static char const DEBUG_TYPE[] = "swang";
 
 template<>
 struct llvm::yaml::ScalarEnumerationTraits<swang::language_type> {
@@ -37,7 +37,7 @@ struct llvm::yaml::ScalarEnumerationTraits<swang::casing_type> {
 template<>
 struct llvm::yaml::MappingTraits<swang::config::style> {
   static void mapping(llvm::yaml::IO & io, swang::config::style & style) {
-    auto predefined = std::string {};
+    auto predefined = std::string();
 
     io.mapOptional("casing", style.casing);
     io.mapOptional("prefix", style.prefix);
@@ -124,22 +124,22 @@ namespace {
     // else
     // return false;
 
-    *style = swang::config {};
+    *style = swang::config();
     style->language = language;
     return true;
   }
 
-  static llvm::error_code parse_config(llvm::StringRef text, swang::config* style) {
+  static std::error_code parse_config(llvm::StringRef text, swang::config* style) {
     assert(style);
 
     auto const language = style->language;
     assert(language != swang::language_type::none);
 
     if (text.trim().empty())
-      return llvm::make_error_code(llvm::errc::invalid_argument);
+      return std::make_error_code(std::errc::invalid_argument);
 
-    auto              styles = std::vector<swang::config> {};
-    llvm::yaml::Input input { text };
+    auto              styles = std::vector<swang::config>();
+    llvm::yaml::Input input(text);
 
     input.setContext(style);
     input >> styles;
@@ -149,12 +149,12 @@ namespace {
 
     for (auto const& s : styles) {
       if ((s.language == swang::language_type::none) && (&s != &styles.back()))
-        return llvm::make_error_code(llvm::errc::invalid_argument);
+        return std::make_error_code(std::errc::invalid_argument);
 
       for (auto const& t : styles) {
         if ((s.language == t.language) && (&s != &t)) {
-          DEBUG(llvm::dbgs() << "Duplicate languages in the config file on positions " << (&s - styles.begin()) << " and " << (&t - styles.begin()) << "\n");
-          return llvm::make_error_code(llvm::errc::invalid_argument);
+//          DEBUG(llvm::dbgs() << "Duplicate languages in the config file on positions " << (&s - styles.begin()) << " and " << (&t - styles.begin()) << "\n");
+          return std::make_error_code(std::errc::invalid_argument);
         }
       }
     }
@@ -163,11 +163,11 @@ namespace {
       if ((s.language == language) || (s.language == swang::language_type::none)) {
         *style          = s;
         style->language = language;
-        return llvm::error_code();
+        return std::error_code();
       }
     }
 
-    return llvm::make_error_code(llvm::errc::not_supported);
+    return std::make_error_code(std::errc::not_supported);
   }
 
 }
@@ -175,7 +175,7 @@ namespace {
 namespace swang {
 
   swang::config get_config(std::string name, std::string file_name, std::string fallback_name) {
-    auto style = swang::config {};
+    auto style = swang::config();
 
     style.language = get_language_by_file_name(file_name);
     if (!get_predefined_config(fallback_name, style.language, &style)) {
@@ -183,10 +183,10 @@ namespace swang {
       return style;
     }
 
-    auto config_name = llvm::StringRef { name };
+    auto config_name = llvm::StringRef(name);
     if (config_name.startswith("{")) {
       // Parse YAML/JSON style from the command line.
-      if (llvm::error_code ec = parse_config(config_name, &style))
+      if (std::error_code ec = parse_config(config_name, &style))
         llvm::errs() << "Error parsing -style: " << ec.message() << ", using " << fallback_name << " style\n";
       return style;
     }
@@ -199,15 +199,15 @@ namespace swang {
     }
 
     // Look for .swang file in the file's parent directories.
-    auto unsuitable_config_files = llvm::SmallString<128> {};
-    auto path = llvm::SmallString<128> { file_name };
+    auto unsuitable_config_files = llvm::SmallString<128>();
+    auto path = llvm::SmallString<128>(file_name);
 
     llvm::sys::fs::make_absolute(path);
     for (llvm::StringRef directory = path; !directory.empty(); directory = llvm::sys::path::parent_path(directory)) {
       if (!llvm::sys::fs::is_directory(directory))
         continue;
 
-      auto config_file = llvm::SmallString<128> { directory };
+      auto config_file = llvm::SmallString<128>(directory);
       llvm::sys::path::append(config_file, ".swang");
       DEBUG(llvm::dbgs() << "Trying " << config_file << "...\n");
       bool is_file = false;
@@ -216,14 +216,14 @@ namespace swang {
       llvm::sys::fs::is_regular_file(llvm::Twine(config_file), is_file);
 
       if (is_file) {
-        auto text = std::unique_ptr<llvm::MemoryBuffer> {};
-        if (auto ec = llvm::MemoryBuffer::getFile(config_file.c_str(), text)) {
-          llvm::errs() << ec.message() << "\n";
+        auto buffer = llvm::MemoryBuffer::getFile(config_file.c_str(), config_file.size());
+        if (buffer.getError()) {
+          llvm::errs() << buffer.getError().message() << "\n";
           break;
         }
 
-        if (auto ec = parse_config(text->getBuffer(), &style)) {
-          if (ec == llvm::errc::not_supported) {
+        if (auto ec = parse_config(buffer.get()->getBuffer(), &style)) {
+          if (ec == std::errc::not_supported) {
             if (!unsuitable_config_files.empty())
               unsuitable_config_files.append(", ");
             unsuitable_config_files.append(config_file);

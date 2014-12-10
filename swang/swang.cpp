@@ -14,12 +14,13 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/YAMLTraits.h"
+#include "llvm/Support/Regex.h"
 
 #include <sstream>
 
 namespace {
 
-  static constexpr char const* const casing_names[] = {
+  char const* const casing_names[] = {
     "aNy_CasE",
     "lower_case",
     "UPPER_CASE",
@@ -28,24 +29,24 @@ namespace {
   };
 
   static llvm::Regex casing_matchers[] = {
-    llvm::Regex { llvm::StringRef { ".*" } },
-    llvm::Regex { llvm::StringRef { "[a-z][a-z0-9_]*" } },
-    llvm::Regex { llvm::StringRef { "[A-Z][A-Z0-9_]*" } },
-    llvm::Regex { llvm::StringRef { "[A-Z]+[a-z][a-zA-Z0-9]*" } },
-    llvm::Regex { llvm::StringRef { "[a-z][a-zA-Z0-9]*" } },
+    llvm::Regex(llvm::StringRef(".*")),
+    llvm::Regex(llvm::StringRef("[a-z][a-z0-9_]*")),
+    llvm::Regex(llvm::StringRef("[A-Z][A-Z0-9_]*")),
+    llvm::Regex(llvm::StringRef("[A-Z]+[a-z][a-zA-Z0-9]*")),
+    llvm::Regex(llvm::StringRef("[a-z][a-zA-Z0-9]*")),
   };
 
   static llvm::Regex casing_splitters[] = {
-    llvm::Regex { llvm::StringRef { "(.*)" } },
-    llvm::Regex { llvm::StringRef { "([a-z]+)(?:_|$)" } },
-    llvm::Regex { llvm::StringRef { "([A-Z]+)(?:_|$)" } },
-    llvm::Regex { llvm::StringRef { "([A-Z]+?|[A-Z][a-z]+)" } },
-    llvm::Regex { llvm::StringRef { "([a-zA-Z][a-z0-9]*)" } },
+    llvm::Regex(llvm::StringRef("(.*)")),
+    llvm::Regex(llvm::StringRef("([a-z]+)(?:_|$)")),
+    llvm::Regex(llvm::StringRef("([A-Z]+)(?:_|$)")),
+    llvm::Regex(llvm::StringRef("([A-Z]+?|[A-Z][a-z]+)")),
+    llvm::Regex(llvm::StringRef("([a-zA-Z][a-z0-9]*)")),
   };
 
   class SwangCallback : public clang::ast_matchers::MatchFinder::MatchCallback {
     public:
-      SwangCallback(clang::tooling::Replacements* replacements) : replacements(replacements) {}
+      SwangCallback(clang::tooling::Replacements* replacements) : replacements(replacements), config_initialized(false) {}
 
       void run(clang::ast_matchers::MatchFinder::MatchResult const & result) override {
         auto& source_manager = *result.SourceManager;
@@ -64,7 +65,7 @@ namespace {
                        else
                          matches = false;
 
-                       if (!casing_matchers[std::size_t { style.casing }].match(name))
+                       if (!casing_matchers[std::size_t(style.casing)].match(name))
                          matches = false;
 
                        return std::make_tuple(matches, name);
@@ -81,7 +82,7 @@ namespace {
                          words.pop_back();
                        }
 
-                       auto fixup = std::string { style.prefix };
+                       auto fixup = std::string(style.prefix);
                        switch (style.casing) {
                          case swang::casing_type::any_case:
                            break;
@@ -116,7 +117,7 @@ namespace {
 
         auto report = [&](clang::CharSourceRange source_range, unsigned diagnostic, std::string name, swang::config::style style) {
                         diagnostics.Report(clang::FullSourceLoc(source_range.getBegin(), source_manager), diagnostic)
-                          << name << style.prefix << casing_names[std::size_t { style.casing }] << style.suffix
+                          << name << style.prefix << casing_names[std::size_t(style.casing)] << style.suffix
                           << clang::FixItHint::CreateReplacement(source_range, fixup(name, style))
                           << source_range;
                       };
@@ -129,8 +130,8 @@ namespace {
 
         std::string           tag     = "";
         std::string           name    = "";
-        std::set<std::string> attribs = {};
-        std::set<std::string> classes = {};
+        std::set<std::string> attribs;
+        std::set<std::string> classes;
         if (auto d = result.Nodes.getNodeAs<clang::Decl>("decl")) {
           if (!source_manager.isWrittenInMainFile(d->getLocation()))
             return;
@@ -771,7 +772,7 @@ namespace {
           if (decl->isAnonymousNamespace())
             return;
 
-          auto style = swang::config::style {};
+          auto style = swang::config::style();
           if (decl->isInline() && config.inline_namespace_style.is_set)
             style = config.inline_namespace_style;
           else if (config.namespace_style.is_set)
@@ -781,7 +782,7 @@ namespace {
             return;
 
           auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning, "inline namespace '%0' hasn't got swag like '%1%2%3'.");
-          auto       name       = std::string {};
+          auto       name       = std::string();
           auto       matches = true;
           std::tie(matches, name) = check(decl->getName().str(), style);
 
@@ -836,13 +837,13 @@ namespace {
     private:
       clang::tooling::Replacements* replacements;
       swang::config                 config;
-      bool                          config_initialized = false;
+      bool                          config_initialized;
   };
 
 } // end anonymous namespace
 
-auto build_path = llvm::cl::opt<std::string> { llvm::cl::Positional, llvm::cl::desc("<build-path>") };
-auto source_paths = llvm::cl::list<std::string> { llvm::cl::Positional, llvm::cl::desc("<source0> [... <sourceN>]"), llvm::cl::OneOrMore };
+auto build_path = llvm::cl::opt<std::string>(llvm::cl::Positional, llvm::cl::desc("<build-path>"));
+auto source_paths = llvm::cl::list<std::string>(llvm::cl::Positional, llvm::cl::desc("<source0> [... <sourceN>]"), llvm::cl::OneOrMore);
 
 int main(int argc, const char** argv) {
   llvm::sys::PrintStackTraceOnErrorSignal();
@@ -851,19 +852,18 @@ int main(int argc, const char** argv) {
   llvm::cl::ParseCommandLineOptions(argc, argv);
 
   if (!database) {
-    auto error_message = std::string {};
-    database.reset(!build_path.empty()
-                   ? clang::tooling::CompilationDatabase::autoDetectFromDirectory(build_path, error_message)
-                   : clang::tooling::CompilationDatabase::autoDetectFromSource(source_paths[0], error_message)
-                   );
+    auto error_message = std::string();
+    database = !build_path.empty()
+                ? clang::tooling::CompilationDatabase::autoDetectFromDirectory(build_path, error_message)
+                : clang::tooling::CompilationDatabase::autoDetectFromSource(source_paths[0], error_message);
 
     if (!database)
       llvm::report_fatal_error(error_message);
   }
 
-  auto tool   = clang::tooling::RefactoringTool { *database, source_paths };
-  auto finder = clang::ast_matchers::MatchFinder {};
-  auto callback = SwangCallback { &tool.getReplacements() };
+  auto tool   = clang::tooling::RefactoringTool(*database, source_paths);
+  auto finder = clang::ast_matchers::MatchFinder();
+  auto callback = SwangCallback(&tool.getReplacements());
 
   auto declMatcher = clang::ast_matchers::decl().bind("decl");
 
