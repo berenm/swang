@@ -14,6 +14,9 @@ Swang: Check how much swagg your C++'s got!
     :alt: Gitter Chat
     :target: https://gitter.im/berenm/swang
 
+.. image:: swang.png
+    :alt: Screenshot
+
 USAGE
 ````````````````````````````
 

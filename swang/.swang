@@ -1,12 +1,12 @@
 ---
-variable: { casing: lower_case }
-namespace: { casing: lower_case }
-parameter: { casing: lower_case }
+variable: { casing: CamelCase }
+namespace: { casing: UPPER_CASE }
+parameter: { casing: camelBack }
 global_constant: { casing: UPPER_CASE }
 local_constant: { casing: lower_case }
-struct: { casing: lower_case }
-typedef: { casing: lower_case }
+struct: { casing: CamelCase }
+typedef: { casing: lower_case, suffix: _t }
 method: { casing: lower_case }
-member: { casing: lower_case }
+member: { casing: CamelCase, prefix: m }
 pod: { casing: UPPER_CASE }
 ...
