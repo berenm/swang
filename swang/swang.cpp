@@ -1,28 +1,35 @@
-#include "swang_config.hpp"
-
+#include "clang/AST/ASTConsumer.h"
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Tooling/CompilationDatabase.h"
 #include "clang/Tooling/Refactoring.h"
 #include "clang/Tooling/Tooling.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Signals.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/YAMLTraits.h"
-#include "llvm/Support/Regex.h"
 
-#include <sstream>
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Regex.h"
+#include "llvm/Support/Signals.h"
+#include "llvm/Support/YAMLTraits.h"
 
 namespace swang {
-
   namespace casing {
+
+    enum type {
+      any_case=0,
+      lower_case,
+      camel_back,
+      upper_case,
+      camel_case,
+    };
+
     static char const* const names[] = {
       "aNy_CasE",
       "lower_case",
@@ -46,113 +53,362 @@ namespace swang {
       llvm::Regex(llvm::StringRef("^([A-Z]+)(_|$)")),
       llvm::Regex(llvm::StringRef("^([A-Z]+|[A-Z][a-z]+)")),
     };
+
   }
 
+  struct config {
+    struct style {
+      style() :
+        is_set(false),
+        casing(casing::type::any_case),
+        prefix(""),
+        suffix("") {}
+
+      style(bool is_set, casing::type casing, std::string prefix, std::string suffix) :
+        is_set(is_set),
+        casing(casing),
+        prefix(std::move(prefix)),
+        suffix(std::move(suffix)) {}
+
+      bool         is_set;
+      casing::type casing;
+      std::string  prefix;
+      std::string  suffix;
+    };
+
+    style namespace_style;
+    style inline_namespace_style;
+
+    style enum_constant_style;
+    style constexpr_variable_style;
+    style member_constant_style;
+    style member_style;
+    style class_constant_style;
+    style class_member_style;
+    style global_constant_style;
+    style global_variable_style;
+    style local_constant_style;
+    style local_variable_style;
+    style static_constant_style;
+    style static_variable_style;
+    style constant_style;
+    style variable_style;
+
+    style parameter_constant_style;
+    style parameter_pack_style;
+    style parameter_style;
+
+    style abstract_style;
+    style pod_style;
+    style struct_style;
+    style class_style;
+    style union_style;
+    style enum_style;
+
+    style pure_function_style;
+    style global_function_style;
+    style constexpr_function_style;
+    style function_style;
+
+    style pure_method_style;
+    style constexpr_method_style;
+    style virtual_method_style;
+    style class_method_style;
+    style method_style;
+
+    style typedef_style;
+    style template_using_style;
+    style using_style;
+
+    style type_template_parameter_style;
+    style value_template_parameter_style;
+    style template_template_parameter_style;
+    style template_parameter_style;
+  };
+
+} // namespace swang
+
+namespace llvm {
+  namespace yaml {
+
+    template< >
+    struct ScalarEnumerationTraits< swang::casing::type > {
+      static void enumeration(IO& io, swang::casing::type& value) {
+        io.enumCase(value, "any", swang::casing::type::any_case);
+        io.enumCase(value, "aNy_CasE", swang::casing::type::any_case);
+        io.enumCase(value, "lower", swang::casing::type::lower_case);
+        io.enumCase(value, "lower_case", swang::casing::type::lower_case);
+        io.enumCase(value, "upper", swang::casing::type::upper_case);
+        io.enumCase(value, "UPPER_CASE", swang::casing::type::upper_case);
+        io.enumCase(value, "camel", swang::casing::type::camel_case);
+        io.enumCase(value, "CamelCase", swang::casing::type::camel_case);
+        io.enumCase(value, "camel_back", swang::casing::type::camel_back);
+        io.enumCase(value, "camelBack", swang::casing::type::camel_back);
+      }
+
+    };
+
+    template< >
+    struct MappingTraits< swang::config::style > {
+      static void mapping(IO& io, swang::config::style& style) {
+        auto predefined = std::string();
+
+        io.mapOptional("casing", style.casing);
+        io.mapOptional("prefix", style.prefix);
+        io.mapOptional("suffix", style.suffix);
+        style.is_set = true;
+
+        io.setContext(static_cast< void* >(&style));
+      }
+
+    };
+
+    template< >
+    struct MappingTraits< swang::config > {
+      static void mapping(IO& io, swang::config& style) {
+        io.mapOptional("namespace", style.namespace_style);
+        io.mapOptional("inline_namespace", style.inline_namespace_style);
+
+        io.mapOptional("enum_constant", style.enum_constant_style);
+        io.mapOptional("constexpr", style.constexpr_variable_style);
+        io.mapOptional("member_constant", style.member_constant_style);
+        io.mapOptional("member", style.member_style);
+        io.mapOptional("class_constant", style.class_constant_style);
+        io.mapOptional("class_member", style.class_member_style);
+        io.mapOptional("global_constant", style.global_constant_style);
+        io.mapOptional("global_variable", style.global_variable_style);
+        io.mapOptional("local_constant", style.local_constant_style);
+        io.mapOptional("local_variable", style.local_variable_style);
+        io.mapOptional("static_constant", style.static_constant_style);
+        io.mapOptional("static_variable", style.static_variable_style);
+        io.mapOptional("constant", style.constant_style);
+        io.mapOptional("variable", style.variable_style);
+
+        io.mapOptional("parameter_constant", style.parameter_constant_style);
+        io.mapOptional("parameter_pack", style.parameter_pack_style);
+        io.mapOptional("parameter", style.parameter_style);
+
+        io.mapOptional("abstract", style.abstract_style);
+        io.mapOptional("pod", style.pod_style);
+        io.mapOptional("struct", style.struct_style);
+        io.mapOptional("class", style.class_style);
+        io.mapOptional("union", style.union_style);
+        io.mapOptional("enum", style.enum_style);
+
+        io.mapOptional("pure_function", style.pure_function_style);
+        io.mapOptional("global_function", style.global_function_style);
+        io.mapOptional("constexpr_function", style.constexpr_function_style);
+        io.mapOptional("function", style.function_style);
+
+        io.mapOptional("pure_method", style.pure_method_style);
+        io.mapOptional("constexpr_method", style.constexpr_method_style);
+        io.mapOptional("virtual_method", style.virtual_method_style);
+        io.mapOptional("class_method", style.class_method_style);
+        io.mapOptional("method", style.method_style);
+
+        io.mapOptional("typedef", style.typedef_style);
+        io.mapOptional("template_using", style.template_using_style);
+        io.mapOptional("using", style.using_style);
+
+        io.mapOptional("type_template_parameter", style.type_template_parameter_style);
+        io.mapOptional("value_template_parameter", style.value_template_parameter_style);
+        io.mapOptional("template_template_parameter", style.template_template_parameter_style);
+        io.mapOptional("template_parameter", style.template_parameter_style);
+
+        io.setContext(static_cast< void* >(&style));
+      } // mapping
+
+    };
+
+    template< >
+    struct DocumentListTraits< std::vector< swang::config > > {
+      static size_t size(IO& io, std::vector< swang::config >& sequence) {
+        return sequence.size();
+      }
+
+      static swang::config& element(IO&, std::vector< swang::config >& sequence, size_t index) {
+        if (index >= sequence.size())
+          sequence.resize(index + 1);
+        return sequence[index];
+      }
+
+    };
+
+  } // namespace yaml
+} // namespace llvm
+
+namespace swang {
   namespace {
 
-    auto const check = [](llvm::StringRef name, config::style style) {
-                         bool matches = true;
+    auto const DEBUG_TYPE = "swang";
 
-                         if (name.startswith(style.prefix))
-                           name.drop_front(style.prefix.size());
+    namespace cfg {
+
+      auto parse = [](llvm::StringRef text, std::error_code& error) {
+                     if (text.trim().empty())
+                       return error = std::make_error_code(std::errc::invalid_argument), swang::config();
+
+                     auto styles = std::vector< swang::config >();
+
+                     llvm::yaml::Input input(text);
+                     input >> styles;
+
+                     if (input.error())
+                       return error = input.error(), swang::config();
+
+                     if (styles.size() == 0)
+                       return error = std::make_error_code(std::errc::not_supported), swang::config();
+
+                     return error = std::error_code(), std::move(styles[0]);
+                   };
+
+      auto find = [](std::string filename) {
+                    // Look for .swang file in the file's parent directories.
+                    auto path = llvm::SmallString< 128 >(filename);
+
+                    llvm::sys::fs::make_absolute(path);
+
+                    for (llvm::StringRef directory = path; !directory.empty(); directory = llvm::sys::path::parent_path(directory)) {
+                      if (!llvm::sys::fs::is_directory(directory))
+                        continue;
+
+                      auto file = llvm::SmallString< 128 >(directory);
+                      llvm::sys::path::append(file, ".swang");
+
+                      DEBUG(llvm::dbgs() << "Trying " << file << "...\n");
+                      bool is_file = false;
+
+                      // Ignore errors from is_regular_file: we only need to know if we can read the file or not.
+                      llvm::sys::fs::is_regular_file(llvm::Twine(file), is_file);
+
+                      if (!is_file)
+                        continue;
+
+                      auto buffer = llvm::MemoryBuffer::getFile(file.c_str());
+                      if (buffer.getError()) {
+                        llvm::errs() << buffer.getError().message() << "\n";
+                        break;
+                      }
+
+                      auto error = std::error_code();
+                      auto style = cfg::parse(buffer.get()->getBuffer(), error);
+                      if (error == std::errc::not_supported)
+                        continue;
+                      else if (error != std::error_code())
+                        break;
+
+                      DEBUG(llvm::dbgs() << "Using configuration file " << file << "\n");
+                      return std::move(style);
+                    }
+
+                    return swang::config();
+                  };
+
+    } // namespace cfg
+
+    auto check = [](llvm::StringRef name, config::style style) {
+                   bool matches = true;
+
+                   if (name.startswith(style.prefix))
+                     name.drop_front(style.prefix.size());
+                   else
+                     matches = false;
+
+                   if (name.endswith(style.suffix))
+                     name.drop_back(style.suffix.size());
+                   else
+                     matches = false;
+
+                   if (!casing::matchers[std::size_t(style.casing)].match(name))
+                     matches = false;
+
+                   return matches;
+                 };
+
+    auto split = [](std::string name, casing::type casing, std::vector< std::string >& words) {
+                   auto& matcher  = casing::matchers[casing];
+                   auto& splitter = casing::splitters[casing];
+
+                   if (!matcher.match(name))
+                     return false;
+
+                   auto remaining = name;
+                   while (remaining.size() > 0) {
+                     auto groups = llvm::SmallVector< llvm::StringRef, 8 >();
+                     if (!splitter.match(remaining, &groups))
+                       return false;
+
+                     auto const word = groups[1];
+                     if ((casing::names[casing] == std::string("CamelCase"))
+                         && (word.size() > 1) && std::isupper(word.back())) {
+                       remaining = remaining.substr(word.size() - 1);
+                       words.push_back(word.substr(0, word.size() - 1));
+                     } else {
+                       remaining = remaining.substr(groups[0].size());
+                       words.push_back(std::move(word));
+                     }
+                   }
+
+                   return true;
+                 };
+
+    auto fixup = [](std::string name, config::style style) {
+                   auto words = std::vector< std::string >();
+
+                   for (auto& matcher : casing::matchers) {
+                     auto splits = std::vector< std::string >();
+                     if (!split(name, casing::type(&matcher - &casing::matchers[0]), splits))
+                       continue;
+
+                     words = std::move(splits);
+                   }
+
+                   if (words.empty()) {
+                     llvm::errs() << "W: unable to split '" << name << "'\n";
+                     return style.prefix + name + style.suffix;
+                   }
+
+                   auto fixup = std::string(style.prefix);
+                   switch (style.casing) {
+                     case casing::type::any_case:
+                       fixup += name;
+                       break;
+
+                     case casing::type::lower_case:
+                       for (auto const& word : words) {
+                         fixup += llvm::StringRef(word).lower() + "_";
+                       }
+                       fixup.pop_back();
+                       break;
+
+                     case casing::type::upper_case:
+                       for (auto const& word : words) {
+                         fixup += llvm::StringRef(word).upper() + "_";
+                       }
+                       fixup.pop_back();
+                       break;
+
+                     case casing::type::camel_case:
+                       for (auto const& word : words) {
+                         auto const w = llvm::StringRef(word);
+                         fixup += w.substr(0, 1).upper() + w.substr(1).lower();
+                       }
+                       break;
+
+                     case casing::type::camel_back:
+                       for (auto const& word : words) {
+                         auto const w = llvm::StringRef(word);
+                         if (&word == &words.front())
+                           fixup += w.lower();
                          else
-                           matches = false;
+                           fixup += w.substr(0, 1).upper() + w.substr(1).lower();
+                       }
+                       break;
+                   }
+                   fixup += style.suffix;
 
-                         if (name.endswith(style.suffix))
-                           name.drop_back(style.suffix.size());
-                         else
-                           matches = false;
-
-                         if (!casing::matchers[std::size_t(style.casing)].match(name))
-                           matches = false;
-
-                         return matches;
-                       };
-
-    auto const split = [](std::string name, casing::type casing, std::vector< std::string >& words) {
-                         auto& matcher  = casing::matchers[casing];
-                         auto& splitter = casing::splitters[casing];
-
-                         if (!matcher.match(name))
-                           return false;
-
-                         auto remaining = name;
-                         while (remaining.size() > 0) {
-                           auto groups = llvm::SmallVector< llvm::StringRef, 8 >();
-                           if (!splitter.match(remaining, &groups))
-                             return false;
-
-                           auto const word = groups[1];
-                           if ((casing::names[casing] == std::string("CamelCase"))
-                               && (word.size() > 1) && std::isupper(word.back())) {
-                             remaining = remaining.substr(word.size() - 1);
-                             words.push_back(word.substr(0, word.size() - 1));
-                           } else {
-                             remaining = remaining.substr(groups[0].size());
-                             words.push_back(std::move(word));
-                           }
-                         }
-
-                         return true;
-                       };
-
-    auto const fixup = [](std::string name, config::style style) {
-                         auto words = std::vector< std::string >();
-
-                         for (auto& matcher : casing::matchers) {
-                           auto splits = std::vector< std::string >();
-                           if (!split(name, casing::type(&matcher - &casing::matchers[0]), splits))
-                             continue;
-
-                           words = std::move(splits);
-                         }
-
-                         if (words.empty()) {
-                           llvm::errs() << "W: unable to split '" << name << "'\n";
-                           return style.prefix + name + style.suffix;
-                         }
-
-                         auto fixup = std::string(style.prefix);
-                         switch (style.casing) {
-                           case casing::type::any_case:
-                             fixup += name;
-                             break;
-
-                           case casing::type::lower_case:
-                             for (auto const& word : words) {
-                               fixup += llvm::StringRef(word).lower() + "_";
-                             }
-                             fixup.pop_back();
-                             break;
-
-                           case casing::type::upper_case:
-                             for (auto const& word : words) {
-                               fixup += llvm::StringRef(word).upper() + "_";
-                             }
-                             fixup.pop_back();
-                             break;
-
-                           case casing::type::camel_case:
-                             for (auto const& word : words) {
-                               auto const w = llvm::StringRef(word);
-                               fixup += w.substr(0, 1).upper() + w.substr(1).lower();
-                             }
-                             break;
-
-                           case casing::type::camel_back:
-                             for (auto const& word : words) {
-                               auto const w = llvm::StringRef(word);
-                               if (&word == &words.front())
-                                 fixup += w.lower();
-                               else
-                                 fixup += w.substr(0, 1).upper() + w.substr(1).lower();
-                             }
-                             break;
-                         }
-                         fixup += style.suffix;
-
-                         return std::move(fixup);
-                       };
+                   return std::move(fixup);
+                 };
 
     class SwangDeclVisitor : public clang::RecursiveASTVisitor< SwangDeclVisitor > {
       public:
@@ -171,8 +427,7 @@ namespace swang {
             if (!file)
               return this->cfg;
 
-            auto const file_name = file->getName();
-            this->cfg     = swang::get_config("file", file_name, "default");
+            this->cfg     = cfg::find(file->getName());
             this->file_id = location.getFileID();
           }
 
@@ -207,13 +462,22 @@ namespace swang {
           if (d->isAnonymousNamespace())
             return true;
 
+          if (d->getName().empty())
+            return true;
+
           auto config = get_config(d);
           auto style  = config::style();
 
-          if (d->isInline() && config.inline_namespace_style.is_set)
-            style = config.inline_namespace_style;
-          else if (config.namespace_style.is_set)
-            style = config.namespace_style;
+          auto kindname = "namespace";
+          if (false) {
+            //
+          } else if (d->isInline() && config.inline_namespace_style.is_set) {
+            kindname = "inline";
+            style    = config.inline_namespace_style;
+          } else if (config.namespace_style.is_set) {
+            kindname = "namespace";
+            style    = config.namespace_style;
+          }
 
           if (!style.is_set)
             return true;
@@ -221,16 +485,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const kindname   = fixup(static_cast< clang::Decl* >(d)->getDeclKindName(), config::style(true, casing::type::lower_case, "", ""));
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         }
@@ -246,18 +510,17 @@ namespace swang {
           if (d->isAnonymousStructOrUnion())
             return true;
 
+          if (d->getName().empty())
+            return true;
+
           auto config = get_config(d);
           auto style  = config::style();
 
           auto kindname = "class";
           if (false) {
             //
-          } else if (d->isLambda() && config.lambda_style.is_set) {
-            kindname = "lambda";
-            style    = config.lambda_style;
-          } else if (d->isInterface() && config.interface_style.is_set) {
-            kindname = "interface";
-            style    = config.interface_style;
+            // } else if (d->isLambda() && config.lambda_style.is_set) {
+            // } else if (d->isInterface() && config.interface_style.is_set) {
           } else if (d->hasDefinition() && d->isAbstract() && config.abstract_style.is_set) {
             kindname = "abstract class";
             style    = config.abstract_style;
@@ -290,15 +553,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitCXXRecordDecl
@@ -310,6 +574,9 @@ namespace swang {
 
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
+
+          if (d->getName().empty())
+            return true;
 
           auto config = get_config(d);
           auto style  = config::style();
@@ -360,10 +627,8 @@ namespace swang {
           } else if (d->isStaticDataMember() && config.class_member_style.is_set) {
             kindname = "class member";
             style    = config.class_member_style;
-          } else if (d->isExceptionVariable() && config.exception_variable_style.is_set) {
-            kindname = "exception variable";
-            style    = config.exception_variable_style;
 
+            // } else if (d->isExceptionVariable() && config.exception_variable_style.is_set) {
             // } else if (d->isNRVOVariable()) {
             // } else if (d->isCXXForRangeDecl()) {
           } else if (config.variable_style.is_set) {
@@ -377,15 +642,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitVarDecl
@@ -397,6 +663,9 @@ namespace swang {
 
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
+
+          if (d->getName().empty())
+            return true;
 
           auto config = get_config(d);
           auto style  = config::style();
@@ -426,15 +695,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitVarDecl
@@ -446,6 +716,9 @@ namespace swang {
 
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
+
+          if (d->getName().empty())
+            return true;
 
           auto config = get_config(d);
           auto style  = config::style();
@@ -481,15 +754,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitParmVarDecl
@@ -501,6 +775,9 @@ namespace swang {
 
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
+
+          if (d->getName().empty())
+            return true;
 
           if (d->isMain())
             return true;
@@ -538,15 +815,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitFunctionDecl
@@ -558,6 +836,9 @@ namespace swang {
 
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
+
+          if (d->getName().empty())
+            return true;
 
           if (d->isMain())
             return true;
@@ -618,15 +899,16 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitCXXMethodDecl
@@ -638,6 +920,9 @@ namespace swang {
 
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
+
+          if (d->getName().empty())
+            return true;
 
           auto config = get_config(d);
           auto style  = config::style();
@@ -654,56 +939,365 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name       = d->getName();
-          auto const range      = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
-          auto const kindname   = fixup(static_cast< clang::Decl* >(d)->getDeclKindName(), config::style(true, casing::type::lower_case, "", ""));
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-                                                              "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = fixup(static_cast< clang::Decl* >(d)->getDeclKindName(), config::style(true, casing::type::lower_case, "", ""));
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
-            << clang::FixItHint::CreateReplacement(range, fixup(name, style))
-            << range;
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
 
           return true;
         } // VisitTypedefDecl
 
-        bool VisitEnumDecl(clang::EnumDecl* d) { return true; }
-        bool VisitEnumConstantDecl(clang::EnumConstantDecl* d) { return true; }
+        bool VisitEnumDecl(clang::EnumDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
 
-        bool VisitTemplateTypeParmDecl(clang::TemplateTypeParmDecl* d) { return true; }
-        bool VisitNonTypeTemplateParmDecl(clang::NonTypeTemplateParmDecl* d) { return true; }
-        bool VisitTemplateTemplateParmDecl(clang::TemplateTemplateParmDecl* d) { return true; }
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
 
-        bool VisitClassTemplateDecl(clang::ClassTemplateDecl* d) { return true; }
-        bool VisitClassTemplateSpecializationDecl(clang::ClassTemplateSpecializationDecl* d) { return true; }
-        bool VisitClassTemplatePartialSpecializationDecl(clang::ClassTemplatePartialSpecializationDecl* d) { return true; }
+          if (d->getName().empty())
+            return true;
 
-        bool VisitFunctionTemplateDecl(clang::FunctionTemplateDecl* d) { return true; }
+          auto config = get_config(d);
+          auto style  = config::style();
 
-        bool VisitTypeAliasDecl(clang::TypeAliasDecl* d) { return true; }
-        bool VisitTypeAliasTemplateDecl(clang::TypeAliasTemplateDecl* d) { return true; }
+          if (false) {
+            //
+          } else if (config.enum_style.is_set) {
+            style = config.enum_style;
+          }
 
-        bool VisitFriendDecl(clang::FriendDecl* d) { return true; }
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = fixup(static_cast< clang::Decl* >(d)->getDeclKindName(), config::style(true, casing::type::lower_case, "", ""));
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitEnumConstantDecl(clang::EnumConstantDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
+
+          if (d->getName().empty())
+            return true;
+
+          auto config = get_config(d);
+          auto style  = config::style();
+
+          if (false) {
+            //
+          } else if (config.enum_constant_style.is_set) {
+            style = config.enum_constant_style;
+          } else if (config.constant_style.is_set) {
+            style = config.constant_style;
+          }
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = fixup(static_cast< clang::Decl* >(d)->getDeclKindName(), config::style(true, casing::type::lower_case, "", ""));
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitTemplateTypeParmDecl(clang::TemplateTypeParmDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
+
+          if (d->getName().empty())
+            return true;
+
+          auto config = get_config(d);
+          auto style  = config::style();
+
+          if (false) {
+            //
+          } else if (config.type_template_parameter_style.is_set) {
+            style = config.type_template_parameter_style;
+          } else if (config.template_parameter_style.is_set) {
+            style = config.template_parameter_style;
+          }
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = "template parameter";
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitNonTypeTemplateParmDecl(clang::NonTypeTemplateParmDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
+
+          if (d->getName().empty())
+            return true;
+
+          auto config = get_config(d);
+          auto style  = config::style();
+
+          if (false) {
+            //
+          } else if (config.value_template_parameter_style.is_set) {
+            style = config.value_template_parameter_style;
+          } else if (config.template_parameter_style.is_set) {
+            style = config.template_parameter_style;
+          }
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = "template parameter";
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitTemplateTemplateParmDecl(clang::TemplateTemplateParmDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
+
+          if (d->getName().empty())
+            return true;
+
+          auto config = get_config(d);
+          auto style  = config::style();
+
+          if (false) {
+            //
+          } else if (config.template_template_parameter_style.is_set) {
+            style = config.template_template_parameter_style;
+          } else if (config.template_parameter_style.is_set) {
+            style = config.template_parameter_style;
+          }
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = "template parameter";
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitTypeAliasDecl(clang::TypeAliasDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
+
+          if (d->getName().empty())
+            return true;
+
+          auto config = get_config(d);
+          auto style  = config::style();
+
+          if (false) {
+            //
+          } else if (config.using_style.is_set) {
+            style = config.using_style;
+          } else if (config.typedef_style.is_set) {
+            style = config.typedef_style;
+          }
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = "type alias";
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitTypeAliasTemplateDecl(clang::TypeAliasTemplateDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          // if (!manager.isWrittenInMainFile(d->getLocation()))
+          // return true;
+
+          if (d->getName().empty())
+            return true;
+
+          auto config = get_config(d);
+          auto style  = config::style();
+
+          if (false) {
+            //
+          } else if (config.template_using_style.is_set) {
+            style = config.template_using_style;
+          } else if (config.using_style.is_set) {
+            style = config.using_style;
+          } else if (config.typedef_style.is_set) {
+            style = config.typedef_style;
+          }
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const kindname    = "type alias";
+          auto const replacement = fixup(name, style);
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
         bool VisitAccessSpecDecl(clang::AccessSpecDecl* d) { return true; }
-        bool VisitBlockDecl(clang::BlockDecl* d) { return VisitDecl(d); }
-        bool VisitCapturedDecl(clang::CapturedDecl* d) { return VisitDecl(d); }
-        bool VisitClassScopeFunctionSpecializationDecl(clang::ClassScopeFunctionSpecializationDecl* d) { return VisitDecl(d); }
+        bool VisitClassTemplateDecl(clang::ClassTemplateDecl* d) { return true; }
+        bool VisitClassTemplatePartialSpecializationDecl(clang::ClassTemplatePartialSpecializationDecl* d) { return true; }
+        bool VisitClassTemplateSpecializationDecl(clang::ClassTemplateSpecializationDecl* d) { return true; }
         bool VisitCXXConstructorDecl(clang::CXXConstructorDecl* d) { return true; }
         bool VisitCXXConversionDecl(clang::CXXConversionDecl* d) { return true; }
         bool VisitCXXDestructorDecl(clang::CXXDestructorDecl* d) { return true; }
-        bool VisitDeclaratorDecl(clang::DeclaratorDecl* d) { return VisitDecl(d); }
         bool VisitEmptyDecl(clang::EmptyDecl* d) { return true; }
+        bool VisitFriendDecl(clang::FriendDecl* d) { return true; }
+        bool VisitFunctionTemplateDecl(clang::FunctionTemplateDecl* d) { return true; }
+        bool VisitLinkageSpecDecl(clang::LinkageSpecDecl* d) { return true; }
+        bool VisitStaticAssertDecl(clang::StaticAssertDecl* d) { return true; }
+        bool VisitTranslationUnitDecl(clang::TranslationUnitDecl* d) { return true; }
+        bool VisitUnresolvedUsingValueDecl(clang::UnresolvedUsingValueDecl* d) { return true; }
+        bool VisitUsingDecl(clang::UsingDecl* d) { return true; }
+        bool VisitUsingDirectiveDecl(clang::UsingDirectiveDecl* d) { return true; }
+
+        bool VisitBlockDecl(clang::BlockDecl* d) { return VisitDecl(d); }
+        bool VisitCapturedDecl(clang::CapturedDecl* d) { return VisitDecl(d); }
+        bool VisitClassScopeFunctionSpecializationDecl(clang::ClassScopeFunctionSpecializationDecl* d) { return VisitDecl(d); }
+        bool VisitDeclaratorDecl(clang::DeclaratorDecl* d) { return VisitDecl(d); }
         bool VisitFileScopeAsmDecl(clang::FileScopeAsmDecl* d) { return VisitDecl(d); }
         bool VisitFriendTemplateDecl(clang::FriendTemplateDecl* d) { return VisitDecl(d); }
         bool VisitImplicitParamDecl(clang::ImplicitParamDecl* d) { return VisitDecl(d); }
         bool VisitImportDecl(clang::ImportDecl* d) { return VisitDecl(d); }
         bool VisitIndirectFieldDecl(clang::IndirectFieldDecl* d) { return VisitDecl(d); }
         bool VisitLabelDecl(clang::LabelDecl* d) { return VisitDecl(d); }
-        bool VisitLinkageSpecDecl(clang::LinkageSpecDecl* d) { return true; }
         bool VisitMSPropertyDecl(clang::MSPropertyDecl* d) { return VisitDecl(d); }
         bool VisitNamedDecl(clang::NamedDecl* d) { return VisitDecl(d); }
         bool VisitNamespaceAliasDecl(clang::NamespaceAliasDecl* d) { return VisitDecl(d); }
+        bool VisitOMPThreadPrivateDecl(clang::OMPThreadPrivateDecl* d) { return VisitDecl(d); }
+        bool VisitRecordDecl(clang::RecordDecl* d) { return VisitDecl(d); }
+        bool VisitRedeclarableTemplateDecl(clang::RedeclarableTemplateDecl* d) { return VisitDecl(d); }
+        bool VisitTagDecl(clang::TagDecl* d) { return VisitDecl(d); }
+        bool VisitTemplateDecl(clang::TemplateDecl* d) { return VisitDecl(d); }
+        bool VisitTypeDecl(clang::TypeDecl* d) { return VisitDecl(d); }
+        bool VisitTypedefNameDecl(clang::TypedefNameDecl* d) { return VisitDecl(d); }
+        bool VisitUsingShadowDecl(clang::UsingShadowDecl* d) { return VisitDecl(d); }
+        bool VisitValueDecl(clang::ValueDecl* d) { return VisitDecl(d); }
+        bool VisitVarTemplateDecl(clang::VarTemplateDecl* d) { return VisitDecl(d); }
+        bool VisitVarTemplatePartialSpecializationDecl(clang::VarTemplatePartialSpecializationDecl* d) { return VisitDecl(d); }
+        bool VisitVarTemplateSpecializationDecl(clang::VarTemplateSpecializationDecl* d) { return VisitDecl(d); }
+
         bool VisitObjCAtDefsFieldDecl(clang::ObjCAtDefsFieldDecl* d) { return VisitDecl(d); }
         bool VisitObjCCategoryDecl(clang::ObjCCategoryDecl* d) { return VisitDecl(d); }
         bool VisitObjCCategoryImplDecl(clang::ObjCCategoryImplDecl* d) { return VisitDecl(d); }
@@ -717,31 +1311,12 @@ namespace swang {
         bool VisitObjCPropertyDecl(clang::ObjCPropertyDecl* d) { return VisitDecl(d); }
         bool VisitObjCPropertyImplDecl(clang::ObjCPropertyImplDecl* d) { return VisitDecl(d); }
         bool VisitObjCProtocolDecl(clang::ObjCProtocolDecl* d) { return VisitDecl(d); }
-        bool VisitOMPThreadPrivateDecl(clang::OMPThreadPrivateDecl* d) { return VisitDecl(d); }
-        bool VisitRecordDecl(clang::RecordDecl* d) { return VisitDecl(d); }
-        bool VisitRedeclarableTemplateDecl(clang::RedeclarableTemplateDecl* d) { return VisitDecl(d); }
-        bool VisitStaticAssertDecl(clang::StaticAssertDecl* d) { return true; }
-        bool VisitTagDecl(clang::TagDecl* d) { return VisitDecl(d); }
-        bool VisitTemplateDecl(clang::TemplateDecl* d) { return VisitDecl(d); }
-        bool VisitTranslationUnitDecl(clang::TranslationUnitDecl* d) { return true; }
-        bool VisitTypeDecl(clang::TypeDecl* d) { return VisitDecl(d); }
-        bool VisitTypedefNameDecl(clang::TypedefNameDecl* d) { return VisitDecl(d); }
-        bool VisitUnresolvedUsingValueDecl(clang::UnresolvedUsingValueDecl* d) { return true; }
-        bool VisitUsingDecl(clang::UsingDecl* d) { return true; }
-        bool VisitUsingDirectiveDecl(clang::UsingDirectiveDecl* d) { return true; }
-        bool VisitUsingShadowDecl(clang::UsingShadowDecl* d) { return VisitDecl(d); }
-        bool VisitValueDecl(clang::ValueDecl* d) { return VisitDecl(d); }
-        bool VisitVarTemplateDecl(clang::VarTemplateDecl* d) { return VisitDecl(d); }
-        bool VisitVarTemplatePartialSpecializationDecl(clang::VarTemplatePartialSpecializationDecl* d) { return VisitDecl(d); }
-        bool VisitVarTemplateSpecializationDecl(clang::VarTemplateSpecializationDecl* d) { return VisitDecl(d); }
 
         // Declare WalkUpFrom*() for all concrete Decl classes.
 #define ABSTRACT_DECL(DECL)
 #define DECL(CLASS, BASE)                                      \
   bool WalkUpFrom ## CLASS ## Decl(clang::CLASS ## Decl * d) { \
-    auto r = Visit ## CLASS ## Decl(d);                        \
-    push();                                                    \
-    return r;                                                  \
+    return Visit ## CLASS ## Decl(d);                          \
   } // namespace {
 #include "clang/AST/DeclNodes.inc"
 
@@ -751,16 +1326,11 @@ namespace swang {
 #define ABSTRACT_DECL(DECL)
 #define DECL(CLASS, BASE)                                    \
   bool Traverse ## CLASS ## Decl(clang::CLASS ## Decl * d) { \
-    auto r = base::Traverse ## CLASS ## Decl(d);             \
-    pop();                                                   \
-    return r;                                                \
+    return base::Traverse ## CLASS ## Decl(d);               \
   }
 #include "clang/AST/DeclNodes.inc"
 
         // The above header #undefs ABSTRACT_DECL and DECL upon exit.
-
-        void push() {}
-        void pop() {}
 
       private:
         clang::tooling::Replacements& replacements;
@@ -778,18 +1348,14 @@ namespace swang {
     class SwangASTConsumer : public clang::ASTConsumer {
       public:
         SwangASTConsumer(clang::tooling::Replacements& replacements) :
-          replacements(replacements),
           visitor(replacements) {}
 
         virtual void HandleTranslationUnit(clang::ASTContext& context) {
-          // Traversing the translation unit decl via a RecursiveASTVisitor
-          // will visit all nodes in the AST.
           visitor.TraverseDecl(context.getTranslationUnitDecl());
         }
 
       private:
-        clang::tooling::Replacements& replacements;
-        SwangDeclVisitor              visitor;
+        SwangDeclVisitor visitor;
     };
 
     class SwangAction {
@@ -826,7 +1392,7 @@ int main(int argc, const char** argv) {
   }
 
   auto tool   = clang::tooling::RefactoringTool(*database, source_paths);
-  auto finder = swang::SwangAction(tool.getReplacements());
+  auto action = swang::SwangAction(tool.getReplacements());
 
-  return tool.run(clang::tooling::newFrontendActionFactory(&finder).get());
+  return tool.run(clang::tooling::newFrontendActionFactory(&action).get());
 }
