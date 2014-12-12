@@ -95,6 +95,8 @@ defined.
 - ``template_template_parameter``: a template template parameter
 - ``template_parameter``: a template parameter
 
+See example ``.swang`` file to get an idea.
+
 COPYING INFORMATION
 ````````````````````````````
 

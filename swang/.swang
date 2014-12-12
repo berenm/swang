@@ -1,0 +1,12 @@
+---
+variable: { casing: lower_case }
+namespace: { casing: lower_case }
+parameter: { casing: lower_case }
+global_constant: { casing: UPPER_CASE }
+local_constant: { casing: lower_case }
+struct: { casing: lower_case }
+typedef: { casing: lower_case }
+method: { casing: lower_case }
+member: { casing: lower_case }
+pod: { casing: UPPER_CASE }
+...
