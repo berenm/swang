@@ -39,11 +39,11 @@ namespace swang {
     };
 
     static llvm::Regex matchers[] = {
-      llvm::Regex(llvm::StringRef(".*")),
-      llvm::Regex(llvm::StringRef("[a-z][a-z0-9_]*")),
-      llvm::Regex(llvm::StringRef("[a-z][a-zA-Z0-9]*")),
-      llvm::Regex(llvm::StringRef("[A-Z][A-Z0-9_]*")),
-      llvm::Regex(llvm::StringRef("[A-Z]+[a-z][a-zA-Z0-9]*")),
+      llvm::Regex(llvm::StringRef("^.*$")),
+      llvm::Regex(llvm::StringRef("^[a-z][a-z0-9_]*$")),
+      llvm::Regex(llvm::StringRef("^[a-z][a-zA-Z0-9]*$")),
+      llvm::Regex(llvm::StringRef("^[A-Z][A-Z0-9_]*$")),
+      llvm::Regex(llvm::StringRef("^[A-Z]+[a-z][a-zA-Z0-9]*$")),
     };
 
     static llvm::Regex splitters[] = {
