@@ -340,7 +340,9 @@ namespace swang {
 
                      auto const word = groups[1];
                      if ((casing::names[casing] == std::string("CamelCase"))
-                         && (word.size() > 1) && std::isupper(word.back())) {
+                         && (word.size() > 1)
+                         && (word.size() < remaining.size())
+                         && std::isupper(word.back())) {
                        remaining = remaining.substr(word.size() - 1);
                        words.push_back(word.substr(0, word.size() - 1));
                      } else {
