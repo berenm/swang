@@ -19,6 +19,8 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/YAMLTraits.h"
 
+#include <cctype>
+
 namespace swang {
   namespace casing {
 
