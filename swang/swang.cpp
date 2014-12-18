@@ -48,13 +48,7 @@ namespace swang {
       llvm::Regex(llvm::StringRef("^[A-Z]+[a-z][a-zA-Z0-9]*$")),
     };
 
-    static llvm::Regex splitters[] = {
-      llvm::Regex(llvm::StringRef("^(.*)")),
-      llvm::Regex(llvm::StringRef("^([a-z]+)(_|$)")),
-      llvm::Regex(llvm::StringRef("^([a-zA-Z][a-z0-9]*)")),
-      llvm::Regex(llvm::StringRef("^([A-Z]+)(_|$)")),
-      llvm::Regex(llvm::StringRef("^([A-Z]+|[A-Z][a-z]+)")),
-    };
+    static auto splitter = llvm::Regex(llvm::StringRef("(([a-z0-9A-Z]*)(_+)|([A-Z]?[a-z0-9]+)([A-Z]|$)|([A-Z]+)([A-Z]|$))"));
 
   }
 
@@ -327,44 +321,30 @@ namespace swang {
                    return matches;
                  };
 
-    auto split = [](std::string name, casing::type casing, std::vector< std::string >& words) {
-                   auto& matcher  = casing::matchers[casing];
-                   auto& splitter = casing::splitters[casing];
-
-                   if (!matcher.match(name))
-                     return false;
+    auto fixup = [](std::string name, config::style style) {
+                   auto words = std::vector< std::string >();
 
                    auto remaining = name;
                    while (remaining.size() > 0) {
                      auto groups = llvm::SmallVector< llvm::StringRef, 8 >();
-                     if (!splitter.match(remaining, &groups))
-                       return false;
+                     if (!casing::splitter.match(remaining, &groups))
+                       break;
 
-                     auto const word = groups[1];
-                     if ((casing::names[casing] == std::string("CamelCase"))
-                         && (word.size() > 1)
-                         && (word.size() < remaining.size())
-                         && std::isupper(word.back())) {
-                       remaining = remaining.substr(word.size() - 1);
-                       words.push_back(word.substr(0, word.size() - 1));
-                     } else {
-                       remaining = remaining.substr(groups[0].size());
-                       words.push_back(std::move(word));
+                     if (groups[3].size() > 0)
+                     {
+                        words.emplace_back(std::move(groups[2]));
+                        remaining = remaining.substr(groups[0].size());
                      }
-                   }
-
-                   return true;
-                 };
-
-    auto fixup = [](std::string name, config::style style) {
-                   auto words = std::vector< std::string >();
-
-                   for (auto& matcher : casing::matchers) {
-                     auto splits = std::vector< std::string >();
-                     if (!split(name, casing::type(&matcher - &casing::matchers[0]), splits))
-                       continue;
-
-                     words = std::move(splits);
+                     else if (groups[4].size() > 0)
+                     {
+                        words.emplace_back(std::move(groups[4]));
+                        remaining = remaining.substr(groups[0].size() - groups[5].size());
+                     }
+                     else if (groups[6].size() > 0)
+                     {
+                        words.emplace_back(std::move(groups[6]));
+                        remaining = remaining.substr(groups[0].size() - groups[7].size());
+                     }
                    }
 
                    if (words.empty()) {
