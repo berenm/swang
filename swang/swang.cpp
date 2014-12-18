@@ -45,7 +45,7 @@ namespace swang {
       llvm::Regex(llvm::StringRef("^[a-z][a-z0-9_]*$")),
       llvm::Regex(llvm::StringRef("^[a-z][a-zA-Z0-9]*$")),
       llvm::Regex(llvm::StringRef("^[A-Z][A-Z0-9_]*$")),
-      llvm::Regex(llvm::StringRef("^[A-Z]+[a-z][a-zA-Z0-9]*$")),
+      llvm::Regex(llvm::StringRef("^[A-Z][a-zA-Z0-9]*$")),
     };
 
     static auto splitter = llvm::Regex(llvm::StringRef("(([a-z0-9A-Z]*)(_+)|([A-Z]?[a-z0-9]+)([A-Z]|$)|([A-Z]+)([A-Z]|$))"));
