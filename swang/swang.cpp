@@ -404,7 +404,11 @@ namespace swang {
         config get_config(clang::Decl* d) {
           auto& context  = d->getASTContext();
           auto& manager  = context.getSourceManager();
-          auto  location = clang::FullSourceLoc(d->getLocation(), manager);
+          auto location = clang::FullSourceLoc(d->getLocation(), manager);
+          if (d->getLocation().isMacroID())
+          {
+            location = location.getSpellingLoc();
+          }
 
           if (location.getFileID() != this->file_id) {
             auto const file = manager.getFileEntryForID(location.getFileID());
@@ -426,7 +430,7 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
-          auto diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning, "invalid declaration %0");
+          auto diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning, "swang didn't handle declaration %0");
 
           diagnostics.Report(clang::FullSourceLoc(d->getLocation(), manager), diagnostic)
             << d->getSourceRange()
@@ -474,6 +478,37 @@ namespace swang {
           auto const replacement = fixup(name, style);
           auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
                                                                "%0 '%1' doesn't swag like '%2%3%4'.");
+
+          diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
+            << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
+            << clang::FixItHint::CreateReplacement(range, replacement) << range;
+          replacements.insert(clang::tooling::Replacement(manager, clang::CharSourceRange::getCharRange(range), replacement));
+
+          return true;
+        }
+
+        bool VisitNamespaceAliasDecl(clang::NamespaceAliasDecl* d) {
+          auto& context     = d->getASTContext();
+          auto& manager     = context.getSourceManager();
+          auto& diagnostics = context.getDiagnostics();
+
+          auto config = get_config(d);
+          auto style = config::style();
+
+          auto kindname = "namespace";
+          style = config.namespace_style;
+
+          if (!style.is_set)
+            return true;
+
+          if (check(d->getName(), style))
+            return true;
+
+          auto const name = d->getName();
+          auto const range = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const replacement = fixup(name, style);
+          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+            "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
@@ -760,6 +795,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -821,6 +858,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -833,6 +872,8 @@ namespace swang {
           if (d->isCopyAssignmentOperator())
             return true;
           if (d->isMoveAssignmentOperator())
+            return true;
+          if (d->size_overridden_methods() > 0)
             return true;
 
           auto config   = get_config(d);
@@ -1239,6 +1280,8 @@ namespace swang {
           return true;
         }
 
+        bool VisitClassScopeFunctionSpecializationDecl(clang::ClassScopeFunctionSpecializationDecl* d) { return VisitCXXMethodDecl(d->getSpecialization()); }
+
         bool VisitAccessSpecDecl(clang::AccessSpecDecl* d) { return true; }
         bool VisitClassTemplateDecl(clang::ClassTemplateDecl* d) { return true; }
         bool VisitClassTemplatePartialSpecializationDecl(clang::ClassTemplatePartialSpecializationDecl* d) { return true; }
@@ -1258,7 +1301,6 @@ namespace swang {
 
         bool VisitBlockDecl(clang::BlockDecl* d) { return VisitDecl(d); }
         bool VisitCapturedDecl(clang::CapturedDecl* d) { return VisitDecl(d); }
-        bool VisitClassScopeFunctionSpecializationDecl(clang::ClassScopeFunctionSpecializationDecl* d) { return VisitDecl(d); }
         bool VisitDeclaratorDecl(clang::DeclaratorDecl* d) { return VisitDecl(d); }
         bool VisitFileScopeAsmDecl(clang::FileScopeAsmDecl* d) { return VisitDecl(d); }
         bool VisitFriendTemplateDecl(clang::FriendTemplateDecl* d) { return VisitDecl(d); }
@@ -1268,7 +1310,6 @@ namespace swang {
         bool VisitLabelDecl(clang::LabelDecl* d) { return VisitDecl(d); }
         bool VisitMSPropertyDecl(clang::MSPropertyDecl* d) { return VisitDecl(d); }
         bool VisitNamedDecl(clang::NamedDecl* d) { return VisitDecl(d); }
-        bool VisitNamespaceAliasDecl(clang::NamespaceAliasDecl* d) { return VisitDecl(d); }
         bool VisitOMPThreadPrivateDecl(clang::OMPThreadPrivateDecl* d) { return VisitDecl(d); }
         bool VisitRecordDecl(clang::RecordDecl* d) { return VisitDecl(d); }
         bool VisitRedeclarableTemplateDecl(clang::RedeclarableTemplateDecl* d) { return VisitDecl(d); }
