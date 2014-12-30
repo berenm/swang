@@ -449,6 +449,8 @@ namespace swang {
           if (d->isAnonymousNamespace())
             return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -491,6 +493,11 @@ namespace swang {
           auto& manager     = context.getSourceManager();
           auto& diagnostics = context.getDiagnostics();
 
+          if (!d->getIdentifier())
+            return true;
+          if (d->getName().empty())
+            return true;
+
           auto config = get_config(d);
           auto style  = config::style();
 
@@ -528,6 +535,8 @@ namespace swang {
           if (d->isAnonymousStructOrUnion())
             return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -593,6 +602,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -682,6 +693,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -735,6 +748,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -945,6 +960,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -986,6 +1003,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -1027,6 +1046,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -1070,6 +1091,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -1113,6 +1136,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -1156,6 +1181,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -1199,6 +1226,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
@@ -1242,6 +1271,8 @@ namespace swang {
           // if (!manager.isWrittenInMainFile(d->getLocation()))
           // return true;
 
+          if (!d->getIdentifier())
+            return true;
           if (d->getName().empty())
             return true;
 
