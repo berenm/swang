@@ -404,9 +404,8 @@ namespace swang {
         config get_config(clang::Decl* d) {
           auto& context  = d->getASTContext();
           auto& manager  = context.getSourceManager();
-          auto location = clang::FullSourceLoc(d->getLocation(), manager);
-          if (d->getLocation().isMacroID())
-          {
+          auto  location = clang::FullSourceLoc(d->getLocation(), manager);
+          if (d->getLocation().isMacroID()) {
             location = location.getSpellingLoc();
           }
 
@@ -493,7 +492,7 @@ namespace swang {
           auto& diagnostics = context.getDiagnostics();
 
           auto config = get_config(d);
-          auto style = config::style();
+          auto style  = config::style();
 
           auto kindname = "namespace";
           style = config.namespace_style;
@@ -504,11 +503,11 @@ namespace swang {
           if (check(d->getName(), style))
             return true;
 
-          auto const name = d->getName();
-          auto const range = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
+          auto const name        = d->getName();
+          auto const range       = clang::DeclarationNameInfo(d->getDeclName(), d->getLocation()).getSourceRange();
           auto const replacement = fixup(name, style);
-          auto const diagnostic = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
-            "%0 '%1' doesn't swag like '%2%3%4'.");
+          auto const diagnostic  = diagnostics.getCustomDiagID(clang::DiagnosticsEngine::Warning,
+                                                               "%0 '%1' doesn't swag like '%2%3%4'.");
 
           diagnostics.Report(clang::FullSourceLoc(range.getBegin(), manager), diagnostic)
             << kindname << d->getName() << style.prefix << casing::names[std::size_t(style.casing)] << style.suffix
@@ -1280,7 +1279,9 @@ namespace swang {
           return true;
         }
 
-        bool VisitClassScopeFunctionSpecializationDecl(clang::ClassScopeFunctionSpecializationDecl* d) { return VisitCXXMethodDecl(d->getSpecialization()); }
+        bool VisitClassScopeFunctionSpecializationDecl(clang::ClassScopeFunctionSpecializationDecl* d) {
+          return VisitCXXMethodDecl(d->getSpecialization());
+        }
 
         bool VisitAccessSpecDecl(clang::AccessSpecDecl* d) { return true; }
         bool VisitClassTemplateDecl(clang::ClassTemplateDecl* d) { return true; }
