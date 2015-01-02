@@ -17,6 +17,25 @@ Swang: Check how much swagg your C++'s got!
 .. image:: swang.png
     :alt: Screenshot
 
+BUILDING
+````````````````````````````
+
+Something like that should do the trick:
+
+.. code:: bash
+
+  git clone https://github.com/llvm-mirror/llvm
+  cd llvm/tools/
+  git clone https://github.com/llvm-mirror/clang
+  cd clang/tools/
+  git clone https://github.com/berenm/swang extra
+  cd ../../../../
+  mkdir build
+  cd build
+  cmake .. -GNinja
+  ninja swang
+
+
 USAGE
 ````````````````````````````
 
