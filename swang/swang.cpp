@@ -306,7 +306,7 @@ namespace swang {
                    bool matches = true;
 
                    if (name.startswith(style.prefix))
-							 name = name.drop_front(style.prefix.size());
+                     name = name.drop_front(style.prefix.size());
                    else
                      matches = false;
 
