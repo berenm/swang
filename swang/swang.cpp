@@ -306,12 +306,12 @@ namespace swang {
                    bool matches = true;
 
                    if (name.startswith(style.prefix))
-                     name = name.drop_front(style.prefix.size());
+                     name.drop_front(style.prefix.size());
                    else
                      matches = false;
 
                    if (name.endswith(style.suffix))
-                     name = name.drop_back(style.suffix.size());
+                     name.drop_back(style.suffix.size());
                    else
                      matches = false;
 
