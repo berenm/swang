@@ -29,7 +29,7 @@ Something like that should do the trick:
   git clone https://github.com/llvm-mirror/clang
   cd clang/tools/
   git clone https://github.com/berenm/swang extra
-  cd ../../../../
+  cd ../../../
   mkdir build
   cd build
   cmake .. -GNinja
@@ -72,7 +72,7 @@ Each style can define any of the following properties.
   - ``CamelCase`` / ``camel``: alpha numeric characters, words starting with upper case letter
   - ``camelBack`` / ``camel_back``: alpha numeric characters, words starting with upper case letter except first
 
-The available elements are the following. Many styles fallback to a more general styles if not
+The available elements are the following. Many styles fallback to a more general style if not
 defined.
 
 - ``namespace``: any namespace
@@ -119,7 +119,7 @@ defined.
 
 See example ``.swang`` file to get an idea.
 
-COPYING INFORMATION
+COPYING
 ````````````````````````````
 
  Distributed under the LLVM Software License.
