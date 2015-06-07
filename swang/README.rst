@@ -89,6 +89,9 @@ defined.
 - ``class_constant``: a static constant (class)
 - ``class_member``: a static variable (class)
 - ``member_constant``: a constant member
+- ``member_private``: a private member
+- ``member_protected``: a protected member
+- ``member_public``: a public member
 - ``member``: a member
 - ``constant``: a constant
 - ``variable``: a variable
@@ -106,6 +109,9 @@ defined.
 
 - ``function``: a function
 - ``class_method``: a class (static) method
+- ``private_method``: a private method
+- ``protected_method``: a protected method
+- ``public_method``: a public method
 - ``method``: a method
 
 - ``typedef``: a ``typedef ... type``
