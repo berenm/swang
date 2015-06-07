@@ -11,8 +11,14 @@
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
 #include "BracesAroundStatementsCheck.h"
-#include "FunctionSize.h"
-#include "RedundantSmartptrGet.h"
+#include "ContainerSizeEmptyCheck.h"
+#include "ElseAfterReturnCheck.h"
+#include "FunctionSizeCheck.h"
+#include "NamedParameterCheck.h"
+#include "RedundantSmartptrGetCheck.h"
+#include "RedundantStringCStrCheck.h"
+#include "ShrinkToFitCheck.h"
+#include "SimplifyBooleanExprCheck.h"
 
 namespace clang {
 namespace tidy {
@@ -23,21 +29,33 @@ public:
   void addCheckFactories(ClangTidyCheckFactories &CheckFactories) override {
     CheckFactories.registerCheck<BracesAroundStatementsCheck>(
         "readability-braces-around-statements");
+    CheckFactories.registerCheck<ContainerSizeEmptyCheck>(
+        "readability-container-size-empty");
+    CheckFactories.registerCheck<ElseAfterReturnCheck>(
+        "readability-else-after-return");
     CheckFactories.registerCheck<FunctionSizeCheck>(
         "readability-function-size");
-    CheckFactories.registerCheck<RedundantSmartptrGet>(
+    CheckFactories.registerCheck<readability::NamedParameterCheck>(
+        "readability-named-parameter");
+    CheckFactories.registerCheck<RedundantSmartptrGetCheck>(
         "readability-redundant-smartptr-get");
+    CheckFactories.registerCheck<RedundantStringCStrCheck>(
+        "readability-redundant-string-cstr");
+    CheckFactories.registerCheck<ShrinkToFitCheck>(
+        "readability-shrink-to-fit");
+    CheckFactories.registerCheck<SimplifyBooleanExprCheck>(
+        "readability-simplify-boolean-expr");
   }
 };
 
+// Register the ReadabilityModule using this statically initialized variable.
+static ClangTidyModuleRegistry::Add<ReadabilityModule>
+    X("readability-module", "Adds readability-related checks.");
+
 } // namespace readability
 
-// Register the MiscTidyModule using this statically initialized variable.
-static ClangTidyModuleRegistry::Add<readability::ReadabilityModule>
-X("readability-module", "Adds readability-related checks.");
-
 // This anchor is used to force the linker to link in the generated object file
-// and thus register the MiscModule.
+// and thus register the ReadabilityModule.
 volatile int ReadabilityModuleAnchorSource = 0;
 
 } // namespace tidy

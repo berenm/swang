@@ -17,6 +17,7 @@ using namespace clang::ast_matchers;
 
 namespace clang {
 namespace tidy {
+namespace google {
 namespace readability {
 
 void
@@ -32,7 +33,7 @@ AvoidCStyleCastsCheck::registerMatchers(ast_matchers::MatchFinder *Finder) {
       this);
 }
 
-bool needsConstCast(QualType SourceType, QualType DestType) {
+static bool needsConstCast(QualType SourceType, QualType DestType) {
   SourceType = SourceType.getNonReferenceType();
   DestType = DestType.getNonReferenceType();
   while (SourceType->isPointerType() && DestType->isPointerType()) {
@@ -44,7 +45,7 @@ bool needsConstCast(QualType SourceType, QualType DestType) {
   return false;
 }
 
-bool pointedTypesAreEqual(QualType SourceType, QualType DestType) {
+static bool pointedTypesAreEqual(QualType SourceType, QualType DestType) {
   SourceType = SourceType.getNonReferenceType();
   DestType = DestType.getNonReferenceType();
   while (SourceType->isPointerType() && DestType->isPointerType()) {
@@ -68,46 +69,66 @@ void AvoidCStyleCastsCheck::check(const MatchFinder::MatchResult &Result) {
   if (CastExpr->getTypeAsWritten()->isVoidType())
     return;
 
-  QualType SourceType =
-      CastExpr->getSubExprAsWritten()->getType().getCanonicalType();
-  QualType DestType = CastExpr->getTypeAsWritten().getCanonicalType();
+  QualType SourceType = CastExpr->getSubExprAsWritten()->getType();
+  QualType DestType = CastExpr->getTypeAsWritten();
 
   if (SourceType == DestType) {
-    diag(CastExpr->getLocStart(), "Redundant cast to the same type.")
+    diag(CastExpr->getLocStart(), "redundant cast to the same type")
         << FixItHint::CreateRemoval(ParenRange);
     return;
   }
+  SourceType = SourceType.getCanonicalType();
+  DestType = DestType.getCanonicalType();
+  if (SourceType == DestType) {
+    diag(CastExpr->getLocStart(),
+         "possibly redundant cast between typedefs of the same type");
+    return;
+  }
+
 
   // The rest of this check is only relevant to C++.
   if (!Result.Context->getLangOpts().CPlusPlus)
     return;
+  // Ignore code inside extern "C" {} blocks.
+  if (!match(expr(hasAncestor(linkageSpecDecl())), *CastExpr, *Result.Context)
+           .empty())
+    return;
+  // Ignore code in .c files and headers included from them, even if they are
+  // compiled as C++.
+  if (getCurrentMainFile().endswith(".c"))
+    return;
+  // Ignore code in .c files #included in other files (which shouldn't be done,
+  // but people still do this for test and other purposes).
+  SourceManager &SM = *Result.SourceManager;
+  if (SM.getFilename(SM.getSpellingLoc(CastExpr->getLocStart())).endswith(".c"))
+    return;
 
   // Leave type spelling exactly as it was (unlike
   // getTypeAsWritten().getAsString() which would spell enum types 'enum X').
-  StringRef DestTypeString = Lexer::getSourceText(
-      CharSourceRange::getTokenRange(
-          CastExpr->getLParenLoc().getLocWithOffset(1),
-          CastExpr->getRParenLoc().getLocWithOffset(-1)),
-      *Result.SourceManager, Result.Context->getLangOpts());
+  StringRef DestTypeString =
+      Lexer::getSourceText(CharSourceRange::getTokenRange(
+                               CastExpr->getLParenLoc().getLocWithOffset(1),
+                               CastExpr->getRParenLoc().getLocWithOffset(-1)),
+                           SM, Result.Context->getLangOpts());
 
   auto diag_builder =
       diag(CastExpr->getLocStart(), "C-style casts are discouraged. %0");
 
   auto ReplaceWithCast = [&](StringRef CastType) {
-    diag_builder << ("Use " + CastType + ".").str();
+    diag_builder << ("Use " + CastType).str();
 
     const Expr *SubExpr = CastExpr->getSubExprAsWritten()->IgnoreImpCasts();
     std::string CastText = (CastType + "<" + DestTypeString + ">").str();
     if (!isa<ParenExpr>(SubExpr)) {
       CastText.push_back('(');
       diag_builder << FixItHint::CreateInsertion(
-          Lexer::getLocForEndOfToken(SubExpr->getLocEnd(), 0,
-                                     *Result.SourceManager,
+          Lexer::getLocForEndOfToken(SubExpr->getLocEnd(), 0, SM,
                                      Result.Context->getLangOpts()),
           ")");
     }
     diag_builder << FixItHint::CreateReplacement(ParenRange, CastText);
   };
+
   // Suggest appropriate C++ cast. See [expr.cast] for cast notation semantics.
   switch (CastExpr->getCastKind()) {
   case CK_NoOp:
@@ -145,9 +166,10 @@ void AvoidCStyleCastsCheck::check(const MatchFinder::MatchResult &Result) {
     break;
   }
 
-  diag_builder << "Use static_cast/const_cast/reinterpret_cast.";
+  diag_builder << "Use static_cast/const_cast/reinterpret_cast";
 }
 
 } // namespace readability
+} // namespace google
 } // namespace tidy
 } // namespace clang
