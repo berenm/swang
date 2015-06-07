@@ -78,6 +78,9 @@ namespace swang {
     style enum_constant_style;
     style constexpr_variable_style;
     style member_constant_style;
+    style member_private_style;
+    style member_protected_style;
+    style member_public_style;
     style member_style;
     style class_constant_style;
     style class_member_style;
@@ -110,6 +113,9 @@ namespace swang {
     style constexpr_method_style;
     style virtual_method_style;
     style class_method_style;
+    style method_private_style;
+    style method_protected_style;
+    style method_public_style;
     style method_style;
 
     style typedef_style;
@@ -168,6 +174,9 @@ namespace llvm {
         io.mapOptional("enum_constant", style.enum_constant_style);
         io.mapOptional("constexpr", style.constexpr_variable_style);
         io.mapOptional("member_constant", style.member_constant_style);
+        io.mapOptional("member_private", style.member_private_style);
+        io.mapOptional("member_protected", style.member_protected_style);
+        io.mapOptional("member_public", style.member_public_style);
         io.mapOptional("member", style.member_style);
         io.mapOptional("class_constant", style.class_constant_style);
         io.mapOptional("class_member", style.class_member_style);
@@ -200,6 +209,9 @@ namespace llvm {
         io.mapOptional("constexpr_method", style.constexpr_method_style);
         io.mapOptional("virtual_method", style.virtual_method_style);
         io.mapOptional("class_method", style.class_method_style);
+        io.mapOptional("method_private", style.method_private_style);
+        io.mapOptional("method_protected", style.method_protected_style);
+        io.mapOptional("method_public", style.method_public_style);
         io.mapOptional("method", style.method_style);
 
         io.mapOptional("typedef", style.typedef_style);
@@ -715,6 +727,15 @@ namespace swang {
           } else if (!type.isNull() && type.isLocalConstQualified() && config.constant_style.is_set) {
             kindname = "constant member";
             style    = config.constant_style;
+          } else if (d->getAccess() == clang::AS_private && config.member_private_style.is_set) {
+            kindname = "private member";
+            style    = config.member_private_style;
+          } else if (d->getAccess() == clang::AS_protected && config.member_protected_style.is_set) {
+            kindname = "protected member";
+            style    = config.member_protected_style;
+          } else if (d->getAccess() == clang::AS_public && config.member_public_style.is_set) {
+            kindname = "public member";
+            style    = config.member_public_style;
           } else if (config.member_style.is_set) {
             kindname = "member";
             style    = config.member_style;
@@ -924,6 +945,15 @@ namespace swang {
           } else if (d->isVirtual() && config.virtual_method_style.is_set) {
             kindname = "virtual method";
             style    = config.virtual_method_style;
+          } else if (d->getAccess() == clang::AS_private && config.method_private_style.is_set) {
+            kindname = "private method";
+            style    = config.method_private_style;
+          } else if (d->getAccess() == clang::AS_protected && config.method_protected_style.is_set) {
+            kindname = "protected method";
+            style    = config.method_protected_style;
+          } else if (d->getAccess() == clang::AS_public && config.method_public_style.is_set) {
+            kindname = "public method";
+            style    = config.method_public_style;
           } else if (config.method_style.is_set) {
             kindname = "method";
             style    = config.method_style;
@@ -1429,8 +1459,8 @@ namespace swang {
   } // end anonymous namespace
 } // namespace swang
 
-auto build_path   = llvm::cl::opt< std::string >(llvm::cl::Positional, llvm::cl::desc("<build-path>"));
-auto source_paths = llvm::cl::list< std::string >(llvm::cl::Positional, llvm::cl::desc("<source0> [... <sourceN>]"), llvm::cl::OneOrMore);
+llvm::cl::opt<std::string>  build_path(llvm::cl::Positional, llvm::cl::desc("<build-path>"));
+llvm::cl::list<std::string> source_paths(llvm::cl::Positional, llvm::cl::desc("<source0> [... <sourceN>]"), llvm::cl::OneOrMore);
 
 int main(int argc, const char** argv) {
   llvm::sys::PrintStackTraceOnErrorSignal();
