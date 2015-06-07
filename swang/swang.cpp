@@ -1459,8 +1459,8 @@ namespace swang {
   } // end anonymous namespace
 } // namespace swang
 
-auto build_path   = llvm::cl::opt< std::string >(llvm::cl::Positional, llvm::cl::desc("<build-path>"));
-auto source_paths = llvm::cl::list< std::string >(llvm::cl::Positional, llvm::cl::desc("<source0> [... <sourceN>]"), llvm::cl::OneOrMore);
+llvm::cl::opt<std::string> build_path(llvm::cl::Positional, llvm::cl::desc("<build-path>"));
+llvm::cl::list<std::string> source_paths(llvm::cl::Positional, llvm::cl::desc("<source0> [... <sourceN>]"), llvm::cl::OneOrMore);
 
 int main(int argc, const char** argv) {
   llvm::sys::PrintStackTraceOnErrorSignal();
